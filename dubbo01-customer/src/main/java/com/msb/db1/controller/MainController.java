@@ -7,12 +7,17 @@ import org.springframework.web.bind.annotation.RestController;
 import com.msb.db1.service.DemoService;
 
 @RestController
-@RequestMapping("/")
+@RequestMapping("/test")
 public class MainController {
+
+
+	@Reference
+	private DemoService demoService;
+
 
 	// api/v888/server/method
 	@RequestMapping("/main")
 	public String main() {
-		return ("hehe");
+		return demoService.sayHello("fuck");
 	}
 }

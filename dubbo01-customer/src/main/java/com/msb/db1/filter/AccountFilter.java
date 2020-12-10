@@ -56,15 +56,15 @@ public class AccountFilter implements Filter {
 		
 		// 是否已登录，从session里找 Account
 		
-		Account account = (Account)request.getSession().getAttribute("account");
-		System.out.println("getSession account:" + account);
-		if (null == account) {
-			// 没登录 跳转登录页面
-			
-			response.sendRedirect("/account/login");
-			return;
-		}
-		
+//		Account account = (Account)request.getSession().getAttribute("account");
+//		System.out.println("getSession account:" + account);
+//		if (null == account) {
+//			// 没登录 跳转登录页面
+//
+//			response.sendRedirect("/account/login");
+//			return;
+//		}
+//
 		
 		// 已登录用户是否有权限访问当前页面
 //		if(!hasAuth(account.getPermissionList(),uri)) {
