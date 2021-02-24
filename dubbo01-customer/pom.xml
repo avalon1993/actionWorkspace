@@ -10,9 +10,9 @@
 		<relativePath /> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.msb.db-1</groupId>
-	<artifactId>dubbo01-provider</artifactId>
+	<artifactId>dubbo01-customer</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>dubbo01-provider</name>
+	<name>dubbo01-customer</name>
 	<description>Demo project for Spring Boot</description>
 
 	<properties>
