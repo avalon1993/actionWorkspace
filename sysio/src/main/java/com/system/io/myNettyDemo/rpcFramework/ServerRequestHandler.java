@@ -1,6 +1,7 @@
 package com.system.io.myNettyDemo.rpcFramework;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 
@@ -35,12 +36,15 @@ public class ServerRequestHandler extends ChannelInboundHandlerAdapter {
                 ByteArrayInputStream din = new ByteArrayInputStream(data);
                 ObjectInputStream doin = new ObjectInputStream(din);
 
-
-
+                MyContent content = (MyContent) doin.readObject();
+                System.out.println(content.getName());
 
 
             }
         }
+
+        ChannelFuture channelFuture = ctx.writeAndFlush(sendBuf);
+        channelFuture.sync();
 
 
     }

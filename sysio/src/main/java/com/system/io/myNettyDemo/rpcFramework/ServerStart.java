@@ -19,7 +19,7 @@ public class ServerStart {
 
         NioEventLoopGroup worker = boss;
         ServerBootstrap bootstrap = new ServerBootstrap();
-        ChannelFuture channelFuture = bootstrap.group(boss, worker)
+        ChannelFuture bind = bootstrap.group(boss, worker)
                 .channel(NioServerSocketChannel.class)
                 .childHandler(new ChannelInitializer<NioSocketChannel>() {
                     @Override
@@ -31,6 +31,13 @@ public class ServerStart {
                         channelPipeline.addLast(new ServerRequestHandler());
                     }
                 }).bind(new InetSocketAddress("localhost", 9090));
+
+
+        try {
+            bind.sync().channel().closeFuture().sync();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
 
     }
 }
