@@ -55,22 +55,23 @@ public class SelectorThread extends ThreadLocal<LinkedBlockingDeque<Channel>> im
 
                         }
                     }
-
-
                 }
 
-                //处理task
+                //处理task: listen client
                 if (!lbq.isEmpty()) {
                     Channel c = lbq.take();
                     if (c instanceof ServerSocketChannel) {
                         ServerSocketChannel server = (ServerSocketChannel) c;
                         server.register(selector, SelectionKey.OP_ACCEPT);
+
+                        System.out.println(Thread.currentThread().getName() + "     register listen");
+
                     } else if (c instanceof SocketChannel) {
                         SocketChannel client = (SocketChannel) c;
                         ByteBuffer buffer = ByteBuffer.allocateDirect(4096);
                         client.register(selector, SelectionKey.OP_READ, buffer);
 
-
+                        System.out.println(Thread.currentThread().getName() + "     register client: " + client.getRemoteAddress());
                     }
                 }
 
@@ -89,9 +90,9 @@ public class SelectorThread extends ThreadLocal<LinkedBlockingDeque<Channel>> im
         try {
             SocketChannel client = server.accept();
             client.configureBlocking(false);
-
-            stg.nextSelector(client);
-
+//            stg.nextSelector(client);
+//            stg.nextSelectorV2(client);
+            stg.nextSelectorV3(client);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -107,17 +108,17 @@ public class SelectorThread extends ThreadLocal<LinkedBlockingDeque<Channel>> im
         buffer.clear();
         while (true) {
             try {
-                int num = client.read(buffer);
-                if (num > 0) {
+                int nums = client.read(buffer);
+                if (nums > 0) {
                     buffer.flip();
                     while (buffer.hasRemaining()) {
                         client.write(buffer);
                     }
                     buffer.clear();
-                } else if (num == 0) {
+                } else if (nums == 0) {
                     break;
-                } else if (num < 0) {
-                    System.out.println("client: " + client.getRemoteAddress() + "closed......");
+                } else if (nums < 0) {
+                    System.out.println("client: " + client.getRemoteAddress() + " closed......");
 
                     key.cancel();
                     break;
@@ -129,5 +130,10 @@ public class SelectorThread extends ThreadLocal<LinkedBlockingDeque<Channel>> im
             }
         }
 
+    }
+
+
+    public void setWorker(SelectorThreadGroup stgWorker) {
+        this.stg = stgWorker;
     }
 }

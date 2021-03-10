@@ -14,6 +14,16 @@ public class SelectorThreadGroup {
 
     AtomicInteger xid = new AtomicInteger(0);
 
+
+    SelectorThreadGroup stg = this;
+
+
+    public void setWorker(SelectorThreadGroup stg) {
+        this.stg = stg;
+
+    }
+
+
     SelectorThreadGroup(int num) {
         sts = new SelectorThread[num];
 
@@ -32,7 +42,9 @@ public class SelectorThreadGroup {
             server.configureBlocking(false);
 
             server.bind(new InetSocketAddress(port));
-            nextSelector(server);
+//            nextSelector(server);
+//            nextSelectorV2(server);
+            nextSelectorV3(server);
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -46,19 +58,43 @@ public class SelectorThreadGroup {
 
         st.selector.wakeup();
 
+    }
 
+    public void nextSelectorV2(Channel c) {
+        try {
+            if (c instanceof ServerSocketChannel) {
+                sts[0].lbq.put(c);
+                sts[0].selector.wakeup();
+            } else {
+                SelectorThread st = nextv2();
+                st.lbq.add(c);
+                st.selector.wakeup();
+            }
 
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
 
-//        ServerSocketChannel s = (ServerSocketChannel) c;
-//        try {
-//
-//            s.register(st.selector, SelectionKey.OP_ACCEPT);
-//            st.selector.wakeup();
-//            System.out.println("aaaaaaaaaaaaaaaaaaa");
-//
-//        } catch (ClosedChannelException e) {
-//            e.printStackTrace();
-//        }
+    public void nextSelectorV3(Channel c) {
+
+        try {
+            if (c instanceof ServerSocketChannel) {
+                SelectorThread st = next();
+                st.lbq.put(c);
+
+                st.setWorker(stg);
+
+                st.selector.wakeup();
+            } else {
+                SelectorThread st = nextv3();
+                st.lbq.add(c);
+                st.selector.wakeup();
+            }
+
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
 
 
     }
@@ -67,4 +103,16 @@ public class SelectorThreadGroup {
         int index = xid.incrementAndGet() % sts.length;
         return sts[index];
     }
+
+    private SelectorThread nextv2() {
+        int index = xid.incrementAndGet() % (sts.length - 1);
+        return sts[index + 1];
+    }
+
+    private SelectorThread nextv3() {
+        int index = xid.incrementAndGet() % stg.sts.length;
+        return stg.sts[index];
+    }
+
+
 }
