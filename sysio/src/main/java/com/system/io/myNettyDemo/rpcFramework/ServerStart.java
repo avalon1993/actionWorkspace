@@ -30,7 +30,7 @@ public class ServerStart {
                         ChannelPipeline channelPipeline = nioSocketChannel.pipeline();
                         channelPipeline.addLast(new ServerRequestHandler());
                     }
-                }).bind(new InetSocketAddress("localhost", 9090));
+                }).bind(new InetSocketAddress("localhost", 8888));
 
 
         try {
