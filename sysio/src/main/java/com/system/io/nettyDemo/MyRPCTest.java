@@ -9,6 +9,7 @@ import io.netty.channel.nio.NioEventLoop;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.codec.ByteToMessageDecoder;
 import org.junit.Test;
 
 import java.io.*;
@@ -16,10 +17,12 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.InetSocketAddress;
+import java.util.List;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class MyRPCTest {
     @Test
@@ -37,6 +40,8 @@ public class MyRPCTest {
                     protected void initChannel(NioSocketChannel ch) throws Exception {
                         System.out.println("server accept cliet port: " + ch.remoteAddress().getPort());
                         ChannelPipeline p = ch.pipeline();
+                        p.addLast(new ServerDecode());
+
                         p.addLast(new ServerRequestHandler());
 //                        p.addLast(new)
                     }
@@ -57,6 +62,26 @@ public class MyRPCTest {
             startServer();
         }).start();
         System.out.println("server started......");
+
+        AtomicInteger num = new AtomicInteger(0);
+        int size = 20;
+        Thread[] threads = new Thread[size];
+        for (int i = 0; i < size; i++) {
+            threads[i] = new Thread(() -> {
+                Car car = proxyGet(Car.class);
+                car.ooxx("hello");
+                car.ooxx("hello: " + num.incrementAndGet());
+            });
+        }
+        for (Thread thread : threads) {
+            thread.start();
+        }
+
+        try {
+            System.in.read();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
 
 //        Car car = proxyGet(Car.class);// 动态代理
 //        car.ooxx("hello");
@@ -101,6 +126,7 @@ public class MyRPCTest {
                 oout = new ObjectOutputStream(out);
                 oout.writeObject(header);
                 byte[] msgHeader = out.toByteArray();
+//                System.out.println("old:::"+msgHeader.length);
 
                 //3.连接池，取得连接
                 ClientFactory factory = ClientFactory.getFactory();
@@ -108,7 +134,9 @@ public class MyRPCTest {
                         factory.getClient(new InetSocketAddress("localhost", 9090));
                 //获取连接过程中，开始->创建,过程-直接取
 
-                ByteBuf byteBuf = PooledByteBufAllocator.DEFAULT.directBuffer(msgHeader.length + msgBody.length);
+                ByteBuf byteBuf = PooledByteBufAllocator
+                        .DEFAULT
+                        .directBuffer(msgHeader.length + msgBody.length);
 
 
                 CountDownLatch countDownLatch = new CountDownLatch(1);
@@ -154,38 +182,85 @@ public class MyRPCTest {
 
 }
 
+class ServerDecode extends ByteToMessageDecoder {
+
+    //父类里一定有channelRead -> byteBuf
+    @Override
+    protected void decode(ChannelHandlerContext channelHandlerContext, ByteBuf buf, List<Object> out) throws Exception {
+
+        System.out.println("channle start : " + buf.readableBytes());
+        while (buf.readableBytes() >= 110) {
+            if (buf.readableBytes() >= 110) {
+                byte[] bytes = new byte[110];
+                buf.getBytes(buf.readerIndex(), bytes);
+
+                ByteArrayInputStream in = new ByteArrayInputStream(bytes);
+                ObjectInputStream oin = new ObjectInputStream(in);
+                MyHeader header = (MyHeader) oin.readObject();
+
+                System.out.println("Server response @ id: " + header.getRequestID());
+
+                if (buf.readableBytes() >= header.getDataLen()) {
+                    //处理指针
+                    buf.readBytes(110); //移动指针到body位置
+
+                    byte[] data = new byte[(int) header.getDataLen()];
+                    buf.readBytes(data);
+                    ByteArrayInputStream din = new ByteArrayInputStream(data);
+                    ObjectInputStream doin = new ObjectInputStream(din);
+
+                    MyContent content = (MyContent) doin.readObject();
+                    System.out.println(content.getName());
+
+                    out.add(new Packmsg(header, content));
+
+                } else {
+                    break;
+                }
+
+            }
+        }
+    }
+}
+
+
 class ServerRequestHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        ByteBuf buf = (ByteBuf) msg;
-        ByteBuf sendBuf = buf.copy();
-
-        if (buf.readableBytes() >= 160) {
-            byte[] bytes = new byte[160];
-            buf.readBytes(bytes);
-            ByteArrayInputStream in = new ByteArrayInputStream(bytes);
-            ObjectInputStream oin = new ObjectInputStream(in);
-            MyHeader header = (MyHeader) oin.readObject();
 
 
-            System.out.println(header.dataLen);
-            System.out.println(header.requestID);
+        Packmsg requestPkg = (Packmsg) msg;
+
+        System.out.println("server handler :" + requestPkg.content.getArgs()[0]);
 
 
-            if (buf.readableBytes() >= header.getDataLen()) {
-                byte[] data = new byte[(int) header.getDataLen()];
-                buf.readBytes(data);
-                ByteArrayInputStream din = new ByteArrayInputStream(data);
-                ObjectInputStream doin = new ObjectInputStream(din);
+        //有新的header+content
 
-                MyContent content = (MyContent) doin.readObject();
-                System.out.println(content.getName());
+        String ioThreadName = Thread.currentThread().getName();
+
+        //1.直接在当前方法 处理IO和业务
+        //2.使用netty自己的evenloop来处理业务及返回
+
+        ctx.executor().execute(new Runnable() {
+            @Override
+            public void run() {
+                String execThreadName = Thread.currentThread().getName();
+                MyContent content = new MyContent();
+
+                String s = ("io thead : " + ioThreadName +
+                        " exec thread: " + execThreadName +
+                        " from args:  " + requestPkg.content.getArgs()[0]);
+                content.setRes(s);
+
+                MyHeader resHeader = new MyHeader();
+                resHeader.setRequestID(requestPkg.header.requestID);
+                resHeader.setFlag(0x14141424);
+//                resHeader.setDataLen();
+
+
             }
+        });
 
-        }
-
-        ChannelFuture channelFuture = ctx.writeAndFlush(sendBuf);
-        channelFuture.sync();
 
     }
 }
@@ -195,7 +270,6 @@ class ClientFactory {
     int poolSize = 1;
     NioEventLoopGroup clientWorker;
     Random rand = new Random();
-
 
     private ClientFactory() {
     }
@@ -238,7 +312,7 @@ class ClientFactory {
         clientWorker = new NioEventLoopGroup(1);
 
         Bootstrap bs = new Bootstrap();
-        bs.group(clientWorker)
+        ChannelFuture connect = bs.group(clientWorker)
                 .channel(NioSocketChannel.class)
                 .handler(new ChannelInitializer<NioSocketChannel>() {
                     @Override
@@ -247,7 +321,12 @@ class ClientFactory {
                         p.addLast(new ClientResponses());
                     }
                 }).connect(address);
-
+        try {
+            NioSocketChannel client = (NioSocketChannel) connect.sync().channel();
+            return client;
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
         return null;
     }
 }
@@ -277,8 +356,8 @@ class ClientResponses extends ChannelInboundHandlerAdapter {
         ByteBuf buf = (ByteBuf) msg;
 
 
-        if (buf.readableBytes() >= 160) {
-            byte[] bytes = new byte[160];
+        if (buf.readableBytes() >= 110) {
+            byte[] bytes = new byte[110];
             buf.readBytes(bytes);
             ByteArrayInputStream in = new ByteArrayInputStream(bytes);
             ObjectInputStream oin = new ObjectInputStream(in);
@@ -361,7 +440,7 @@ class MyContent implements Serializable {
     String methodName;
     Class<?>[] parameterTypes;
     Object[] args;
-
+    String res;
 
     public String getName() {
         return name;
@@ -395,7 +474,13 @@ class MyContent implements Serializable {
         this.args = args;
     }
 
+    public String getRes() {
+        return res;
+    }
 
+    public void setRes(String res) {
+        this.res = res;
+    }
 }
 
 
