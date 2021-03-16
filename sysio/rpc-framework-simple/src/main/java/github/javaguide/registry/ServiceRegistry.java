@@ -1,9 +1,10 @@
 package github.javaguide.registry;
 
-import io.netty.resolver.InetSocketAddressResolver;
+
+import java.net.InetSocketAddress;
 
 public interface ServiceRegistry {
 
-    void registerService(String rpcServiceName, InetSocketAddressResolver inetSocketAddressResolver);
+    void registerService(String rpcServiceName, InetSocketAddress inetSocketAddress);
 
 }
