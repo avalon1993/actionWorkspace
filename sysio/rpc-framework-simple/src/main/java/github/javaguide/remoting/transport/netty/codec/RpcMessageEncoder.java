@@ -40,7 +40,7 @@ public class RpcMessageEncoder extends MessageToByteEncoder<RpcMessage> {
             String codecName = SerializationTypeEnum.getName(rpcMessage.getCodec());
             log.info("codec name: [{}] ", codecName);
 
-//            Serializer
+            Serializer
 
 
 
