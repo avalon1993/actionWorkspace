@@ -8,6 +8,7 @@ import github.javaguide.entity.RpcServiceProperties;
 import github.javaguide.factory.SingletonFactory;
 import github.javaguide.provider.ServiceProvider;
 import github.javaguide.provider.ServiceProviderImpl;
+import github.javaguide.remoting.transport.netty.codec.RpcMessageDecoder;
 import github.javaguide.remoting.transport.netty.codec.RpcMessageEncoder;
 import github.javaguide.utils.RuntimeUtil;
 import github.javaguide.utils.threadpool.ThreadPoolFactoryUtils;
@@ -58,10 +59,11 @@ public class NettyRpcServer {
                         ChannelPipeline p = socketChannel.pipeline();
                         p.addLast(new IdleStateHandler(30, 0, 0, TimeUnit.SECONDS));
                         p.addLast(new RpcMessageEncoder());
-
+                        p.addLast(new RpcMessageDecoder());
+//p.addLast(serviceHandlerGroup,new NettyRpc)
 
                     }
-                })
+                });
 
 
     }
