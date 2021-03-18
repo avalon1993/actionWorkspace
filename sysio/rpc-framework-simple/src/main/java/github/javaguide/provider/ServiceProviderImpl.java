@@ -3,7 +3,7 @@ package github.javaguide.provider;
 import github.javaguide.entity.RpcServiceProperties;
 import github.javaguide.extension.ExtensionLoader;
 import github.javaguide.registry.ServiceRegistry;
-import github.javaguide.remoting.transport.netty.NettyRpcServer;
+import github.javaguide.remoting.transport.netty.server.NettyRpcServer;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.InetAddress;
