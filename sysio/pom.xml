@@ -12,6 +12,7 @@
     <modules>
         <module>rpc-framework-common</module>
         <module>rpc-framework-simple</module>
+        <module>rpc-framework-demo</module>
     </modules>
 
     <name>bjmashbing-sysio</name>
@@ -79,7 +80,7 @@
 
 
         <dependency>
-            <groupId>io.netty</groupId>
+            <groupId>io.MyRpcTest</groupId>
             <artifactId>netty-all</artifactId>
             <version>4.1.49.Final</version>
         </dependency>
