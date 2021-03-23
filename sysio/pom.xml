@@ -80,9 +80,9 @@
 
 
         <dependency>
-            <groupId>io.MyRpcTest</groupId>
+            <groupId>io.netty</groupId>
             <artifactId>netty-all</artifactId>
-            <version>4.1.49.Final</version>
+            <version>${netty.version}</version>
         </dependency>
 
         <!-- lombok -->
