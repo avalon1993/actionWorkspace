@@ -10,6 +10,8 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.ServerSocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.codec.ByteToMessageDecoder;
+import lombok.val;
 import org.junit.Test;
 
 import java.io.*;
@@ -17,10 +19,12 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.InetSocketAddress;
+import java.util.List;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 1. 写一个rpc
@@ -33,7 +37,7 @@ public class MyRpcTest {
 
     @Test
     public void startServer() {
-        NioEventLoopGroup boss = new NioEventLoopGroup(1);
+        NioEventLoopGroup boss = new NioEventLoopGroup(50);
         NioEventLoopGroup worker = boss;
 
 
@@ -47,7 +51,10 @@ public class MyRpcTest {
 
                         System.out.println("server accept client port: " + ch.remoteAddress().getPort());
                         ChannelPipeline p = ch.pipeline();
+                        p.addLast(new ServerDecode());
                         p.addLast(new ServerRequestHandler());
+
+
                     }
                 }).bind(new InetSocketAddress("localhost", 9090));
         try {
@@ -67,12 +74,14 @@ public class MyRpcTest {
 
         System.out.println("server started ......");
 
+
+        AtomicInteger num = new AtomicInteger(0);
         int size = 20;
         Thread[] threads = new Thread[size];
         for (int i = 0; i < size; i++) {
             threads[i] = new Thread(() -> {
                 Car car = proxyGet(Car.class);
-                car.ooxx("hello");
+                car.ooxx("hello" + num.incrementAndGet());
             });
         }
 
@@ -131,7 +140,7 @@ public class MyRpcTest {
                 //3. 连接池:: 取得连接
                 ClientFactory factory = ClientFactory.getFactory();
                 NioSocketChannel clientChannel = factory
-                        .getClient(new InetSocketAddress("localhost", 9090));
+                        .getClient(new InetSocketAddress("localhost", 19090));
 
 
                 //4. 发送 --> 走io out--> 走netty
@@ -179,46 +188,102 @@ public class MyRpcTest {
 
 }
 
-class ServerRequestHandler extends ChannelInboundHandlerAdapter {
+class ServerDecode extends ByteToMessageDecoder {
 
 
+    //父类一定有channelRead -> byteBuf
     @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+    protected void decode(ChannelHandlerContext channelHandlerContext, ByteBuf buf, List<Object> out) throws Exception {
 
-        ByteBuf buf = (ByteBuf) msg;
-        ByteBuf sendBuf = buf.copy();
+//        System.out.println("channel start : " + buf.readableBytes());
 
-        if (buf.readableBytes() >= 81) {
+        while (buf.readableBytes() >= 81) {
             byte[] bytes = new byte[81];
-            buf.readBytes(bytes);
+            buf.getBytes(buf.readerIndex(), bytes); //从哪里读,读多少,但是readindex不变
             ByteArrayInputStream in = new ByteArrayInputStream(bytes);
             ObjectInputStream oin = new ObjectInputStream(in);
             MyHeader header = (MyHeader) oin.readObject();
 //            System.out.println(header.dataLen);
-            System.out.println("client server @id:  " + header.getRequestID());
-
+            System.out.println("Server response @id:  " + header.getRequestID());
 
             if (buf.readableBytes() >= header.getDataLen()) {
+                buf.readBytes(81); //移动指针到body开始的位置
                 byte[] data = new byte[(int) header.getDataLen()];
                 buf.readBytes(data);
-
                 ByteArrayInputStream din = new ByteArrayInputStream(data);
                 ObjectInputStream doin = new ObjectInputStream(din);
                 MyContent content = (MyContent) doin.readObject();
                 System.out.println(content.getName());
+
+
+                out.add(new Packmsg(header, content));
+
+
+            } else {
+                break;
             }
         }
+    }
+}
 
-        ChannelFuture channelFuture = ctx.writeAndFlush(sendBuf);
-        channelFuture.sync();
 
+class ServerRequestHandler extends ChannelInboundHandlerAdapter {
+
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+
+        Packmsg requestPkg = (Packmsg) msg;
+//        System.out.println("Server handler : " + requestPkg.content.getArgs()[0]);
+
+        //如果假设处理完成,要给客户端返回
+
+        //byteBuf
+        //因为是rpc,需要requestID
+        //在client那一侧也要解决解码问题
+
+        // 关注rpc通信协议, 来的时候flag 0x14141414
+
+        String ioThreadName = Thread.currentThread().getName();
+
+        //1.直接在当前方法处理 io 业务 返回
+        //2. 使用netty的eventloop来处理业务及返回
+        ctx.executor().execute(new Runnable() {
+
+            @Override
+            public void run() {
+                String execThreadName = Thread.currentThread().getName();
+                MyContent content = new MyContent();
+
+                String s = ("io thread: " + ioThreadName + " exec thread : " + execThreadName +
+                        " from args : " + requestPkg.content.getArgs()[0]);
+                System.out.println(s);
+                content.setRes(s);
+                byte[] contentByte = SerDerUtil.ser(content);
+
+                MyHeader resHeader = new MyHeader();
+                resHeader.setRequestID(requestPkg.header.getRequestID());
+                resHeader.setFlag(0x14141424);
+                resHeader.setDataLen(contentByte.length);
+
+                byte[] headerByte = SerDerUtil.ser(resHeader);
+
+                ByteBuf byteBuf = PooledByteBufAllocator.DEFAULT
+                        .directBuffer(headerByte.length + contentByte.length);
+
+                byteBuf.writeBytes(headerByte);
+                byteBuf.writeBytes(contentByte);
+
+                ctx.writeAndFlush(byteBuf);
+
+            }
+        });
     }
 
 }
 
 class ClientFactory {
 
-    int poolSize = 1;
+    int poolSize = 10;
     NioEventLoopGroup clientWorker;
     Random rand = new Random();
 
@@ -388,6 +453,8 @@ class MyContent implements Serializable {
     String methodName;
     Class<?>[] parameterTypes;
     Object[] args;
+    String res;
+
 
     public String getName() {
         return name;
@@ -419,6 +486,14 @@ class MyContent implements Serializable {
 
     public void setArgs(Object[] args) {
         this.args = args;
+    }
+
+    public String getRes() {
+        return res;
+    }
+
+    public void setRes(String res) {
+        this.res = res;
     }
 }
 
