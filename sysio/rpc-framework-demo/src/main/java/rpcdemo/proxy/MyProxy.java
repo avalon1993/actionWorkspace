@@ -1,96 +1,90 @@
 package rpcdemo.proxy;
 
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.PooledByteBufAllocator;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.socket.nio.NioSocketChannel;
-import rpc.ClientFactory;
-import rpc.MyContent;
-import rpc.MyHeader;
-import rpc.ResponseMappingHandler;
+import com.bjmashibing.system.rpcdemo.rpc.Dispatcher;
+import com.bjmashibing.system.rpcdemo.rpc.protocol.MyContent;
+import com.bjmashibing.system.rpcdemo.rpc.transport.ClientFactory;
 
-import java.io.ByteArrayOutputStream;
-import java.io.ObjectOutputStream;
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.net.InetSocketAddress;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
 
+/**
+ * @author: 马士兵教育
+ * @create: 2020-08-16 20:11
+ */
 public class MyProxy {
 
-    public static <T> T proxyGet(Class<T> interfaceInfo) {
+    public static <T>T proxyGet(Class<T>  interfaceInfo){
+        //实现各个版本的动态代理。。。。
 
         ClassLoader loader = interfaceInfo.getClassLoader();
         Class<?>[] methodInfo = {interfaceInfo};
 
+        //TODO  LOCAL REMOTE  实现：  用到dispatcher  直接给你返回，还是本地调用的时候也代理一下
+
+        Dispatcher dis =Dispatcher.getDis();
         return (T) Proxy.newProxyInstance(loader, methodInfo, new InvocationHandler() {
             @Override
             public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-                //1. 调用服务 方法 参数 =>封装成message
-                String name = interfaceInfo.getName();
-                String methodName = method.getName();
-                Class<?>[] parameterTypes = method.getParameterTypes();
 
-                MyContent content = new MyContent();
+                Object res=null;
+                Object o = dis.get(interfaceInfo.getName());
+                if(o== null){
+                    //就要走rpc
+                    String name = interfaceInfo.getName();
+                    String methodName = method.getName();
+                    Class<?>[] parameterTypes = method.getParameterTypes();
+                    //TODO  rpc  就像小火车拉货  content是service的具体数据，但是还需要header层完成IO传输的控制
+                    MyContent content = new MyContent();
+                    content.setArgs(args);
+                    content.setName(name);
+                    content.setMethodName(methodName);
+                    content.setParameterTypes(parameterTypes);
+                    //TODO 未来的小火车可能会变
 
-                content.setArgs(args);
-                content.setName(name);
-                content.setMethodName(methodName);
-                content.setParameterTypes(parameterTypes);
+                    /**
+                     * 1,缺失了注册发现，zk
+                     * 2,第一层负载面向的provider
+                     * 3，consumer  线程池  面向 service；并发就有木桶，倾斜
+                     * serviceA
+                     *      ipA:port
+                     *          socket1
+                     *          socket2
+                     *      ipB:port
+                     */
+                    CompletableFuture resF = ClientFactory.transport(content);
 
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
-                ObjectOutputStream oout = new ObjectOutputStream(out);
-                oout.writeObject(content);
+                    res =  resF.get();//阻塞的
 
-                byte[] msgBody = out.toByteArray();
+                }else{
+                    //就是local
+                    //插入一些插件的机会，做一些扩展
+                    System.out.println("lcoal FC....");
+                    Class<?> clazz = o.getClass();
+                    try {
+                        Method m = clazz.getMethod(method.getName(), method.getParameterTypes());
+                        res = m.invoke(o, args);
+                    } catch (NoSuchMethodException e) {
+                        e.printStackTrace();
+                    } catch (IllegalAccessException e) {
+                        e.printStackTrace();
+                    } catch (InvocationTargetException e) {
+                        e.printStackTrace();
+                    }
 
+                }
+                return  res;
 
-                //2. requesetId + message,本地要缓存id
-                // 协议 :[header] [body]
-                MyHeader header = createHeader(msgBody);
-                out.reset();
-                oout = new ObjectOutputStream(out);
-                oout.writeObject(header);
+                //TODO 应该在service的方法执行的时候确定是本地的还是远程的，用到dispatcher来区分下
 
-                //todo: 解决数据decode问题
-                byte[] msgHeader = out.toByteArray();
-                System.out.println(msgHeader.length);
-                //3. 连接池:: 取得连接
-                ClientFactory factory = ClientFactory.getFactory();
-                NioSocketChannel clientChannel = factory
-                        .getClient(new InetSocketAddress("localhost", 9090));
-
-
-                //4. 发送 --> 走io out--> 走netty
-
-
-                ByteBuf byteBuf = PooledByteBufAllocator.DEFAULT.directBuffer(msgHeader.length + msgBody.length);
-
-                CountDownLatch countDownLatch = new CountDownLatch(1);
-                long id = header.getRequestID();
-
-                CompletableFuture<String> res = new CompletableFuture<>();
-
-
-                ResponseMappingHandler.addCallBack(id, res);
-
-
-                byteBuf.writeBytes(msgHeader);
-                byteBuf.writeBytes(msgBody);
-                ChannelFuture channelFuture = clientChannel.writeAndFlush(byteBuf);
-                channelFuture.sync(); //io是双向的，看似有个sync，它仅代表out
-
-
-//                countDownLatch.await();
-
-
-                //5. 如果从io回来了,怎么将代码执行到这里
-
-                return res.get();
             }
         });
+
+
     }
+
+
 }

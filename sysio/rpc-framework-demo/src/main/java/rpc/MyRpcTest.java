@@ -14,17 +14,14 @@ import org.junit.Test;
 import rpcdemo.proxy.MyProxy;
 
 import java.io.*;
-import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -363,7 +360,7 @@ class ClientFactory {
 
 }
 
-class ResponseMappingHandler {
+class ResponseMappingCallBack {
     static ConcurrentHashMap<Long, CompletableFuture> mapping = new ConcurrentHashMap<>();
 
     public static void addCallBack(long requestID, CompletableFuture cb) {
@@ -391,7 +388,7 @@ class ClientResponses extends ChannelInboundHandlerAdapter {
         Packmsg responsepkg = (Packmsg) msg;
 
         //曾经没考虑返回的事情
-        ResponseMappingHandler.runCallBack(responsepkg);
+        ResponseMappingCallBack.runCallBack(responsepkg);
 
     }
 }
