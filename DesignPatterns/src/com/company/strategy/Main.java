@@ -11,7 +11,14 @@ public class Main {
         Dog[] a = {new Dog(3), new Dog(5), new Dog(4)};
         Sorter<Dog> sorter = new Sorter<>();
         sorter.sort(a, new DogComparator());
-        System.out.println(Arrays.toString(a));
 
+        sorter.sort(a, (dog1, dog2) -> {
+            if (dog1.food > dog2.food) {
+                return -1;
+            } else {
+                return 1;
+            }
+        });
+        System.out.println(Arrays.toString(a));
     }
 }
